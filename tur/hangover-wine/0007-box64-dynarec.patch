@@ -1,0 +1,26 @@
+diff --git a/dlls/box64cpu/cpu.c b/dlls/box64cpu/cpu.c
+index e176487..fba002b 100644
+--- a/dlls/box64cpu/cpu.c
++++ b/dlls/box64cpu/cpu.c
+@@ -61,14 +61,14 @@ int box64_dynarec_log = 0;
+ int box64_dynarec = 1;
+ int box64_dynarec_dump = 0;
+ int box64_dynarec_forced = 0;
+-int box64_dynarec_bigblock = 1;
+-int box64_dynarec_forward = 128;
+-int box64_dynarec_strongmem = 0;
+-int box64_dynarec_x87double = 0;
++int box64_dynarec_bigblock = 3;
++int box64_dynarec_forward = 0;
++int box64_dynarec_strongmem = 1;
++int box64_dynarec_x87double = 1;
+ int box64_dynarec_fastnan = 1;
+-int box64_dynarec_fastround = 1;
+-int box64_dynarec_safeflags = 1;
+-int box64_dynarec_callret = 0;
++int box64_dynarec_fastround = 0;
++int box64_dynarec_safeflags = 2;
++int box64_dynarec_callret = 1;
+ int box64_dynarec_hotpage = 0;
+ int box64_dynarec_fastpage = 0;
+ int box64_dynarec_bleeding_edge = 1;

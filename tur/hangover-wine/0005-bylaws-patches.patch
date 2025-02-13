@@ -1,0 +1,738 @@
+From 90aa31a37bab17240d7a8b2981bd8cdde88e5eff Mon Sep 17 00:00:00 2001
+From: airidosas252 <airidaslideikis@gmail.com>
+Date: Wed, 29 Jan 2025 20:23:53 +0200
+Subject: [PATCH] hangover: a bunch of arm64ec specific patches
+
+Andre for some reason avoids using hackier patches (I guess for cleanliness reasons). Some of them are crucial for proper functionality on Android, like 39-bit address space hack.
+
+All credits to Bylaws. Patches taken from: https://github.com/bylaws/wine
+---
+ .../0007-wow64-host-allocations.patch         |  24 ++
+ .../0008-39bit-address-space.patch            |  25 ++
+ tur/hangover-wine/0009-x86-mono.patch         |  45 ++++
+ tur/hangover-wine/0010-vcrun-arm64x.patch     |  42 ++++
+ tur/hangover-wine/0011-arm64-sve.patch        |  54 ++++
+ tur/hangover-wine/0012-fex-avx.patch          | 236 ++++++++++++++++++
+ tur/hangover-wine/0013-inline-asm.patch       |  95 +++++++
+ .../0014-fex-sve-workaround.patch             |  73 ++++++
+ .../0015-syscall-workaround.patch             |  61 +++++
+ 9 files changed, 655 insertions(+)
+ create mode 100644 tur/hangover-wine/0007-wow64-host-allocations.patch
+ create mode 100644 tur/hangover-wine/0008-39bit-address-space.patch
+ create mode 100644 tur/hangover-wine/0009-x86-mono.patch
+ create mode 100644 tur/hangover-wine/0010-vcrun-arm64x.patch
+ create mode 100644 tur/hangover-wine/0011-arm64-sve.patch
+ create mode 100644 tur/hangover-wine/0012-fex-avx.patch
+ create mode 100644 tur/hangover-wine/0013-inline-asm.patch
+ create mode 100644 tur/hangover-wine/0014-fex-sve-workaround.patch
+ create mode 100644 tur/hangover-wine/0015-syscall-workaround.patch
+
+diff --git a/tur/hangover-wine/0007-wow64-host-allocations.patch b/tur/hangover-wine/0007-wow64-host-allocations.patch
+new file mode 100644
+index 000000000..dea4bb5d3
+--- /dev/null
++++ b/tur/hangover-wine/0007-wow64-host-allocations.patch
+@@ -0,0 +1,24 @@
++From 04a74154e1e2cb0faa8dd80b62274c78c589ce03 Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Wed, 17 Apr 2024 18:50:05 +0000
++Subject: [PATCH] ntdll: Force all wow64 host allocations outside of the 32-bit
++ AS.
++
++---
++ dlls/ntdll/unix/virtual.c | 3 +++
++ 1 file changed, 3 insertions(+)
++
++diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
++index 0c0a12c394df..b67c454efdf6 100644
++--- a/dlls/ntdll/unix/virtual.c
+++++ b/dlls/ntdll/unix/virtual.c
++@@ -4569,6 +4569,9 @@ static NTSTATUS allocate_virtual_memory( void **ret, SIZE_T *size_ptr, ULONG typ
++     {
++         base = NULL;
++         size = (size + page_mask) & ~page_mask;
+++#ifdef _WIN64
+++        if (is_wow64() && (!limit_high || limit_high > limit_4g)) limit_low = limit_4g;
+++#endif
++     }
++ 
++     /* Compute the alloc type flags */
+diff --git a/tur/hangover-wine/0008-39bit-address-space.patch b/tur/hangover-wine/0008-39bit-address-space.patch
+new file mode 100644
+index 000000000..f23c667cf
+--- /dev/null
++++ b/tur/hangover-wine/0008-39bit-address-space.patch
+@@ -0,0 +1,25 @@
++From f6587a10e87a001e95b6fcfa9152e55bb93b808d Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Fri, 12 Apr 2024 20:54:16 +0000
++Subject: [PATCH] HACK: server: Map within the 39-bit address space on arm64.
++
++---
++ server/mapping.c | 4 ++++
++ 1 file changed, 4 insertions(+)
++
++diff --git a/server/mapping.c b/server/mapping.c
++index 4bdd7c5080ac..2ddfbac11e6c 100644
++--- a/server/mapping.c
+++++ b/server/mapping.c
++@@ -261,7 +261,11 @@ void init_memory(void)
++ {
++     page_mask = sysconf( _SC_PAGESIZE ) - 1;
++     free_map_addr( 0x60000000, 0x1c000000 );
+++#ifdef __aarch64__
+++    free_map_addr( 0x4000000000, 0x1000000000 );
+++#else
++     free_map_addr( 0x600000000000, 0x100000000000 );
+++#endif
++     if (page_mask != 0xfff)
++         fprintf( stderr, "wineserver: page size is %uk but Wine requires 4k pages, expect problems\n",
++                  (int)(page_mask + 1) / 1024 );
+diff --git a/tur/hangover-wine/0009-x86-mono.patch b/tur/hangover-wine/0009-x86-mono.patch
+new file mode 100644
+index 000000000..d534897f8
+--- /dev/null
++++ b/tur/hangover-wine/0009-x86-mono.patch
+@@ -0,0 +1,45 @@
++From e80f50439393bb729047bdaa74325c169ef8abb4 Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Fri, 19 Apr 2024 20:25:30 +0000
++Subject: [PATCH] HACK: Use x86 mono on aarch64.
++
++---
++ dlls/appwiz.cpl/addons.c | 4 ++--
++ dlls/mscoree/metahost.c  | 2 +-
++ 2 files changed, 3 insertions(+), 3 deletions(-)
++
++diff --git a/dlls/appwiz.cpl/addons.c b/dlls/appwiz.cpl/addons.c
++index 7b2c43472ff1..16734bc9d8cd 100644
++--- a/dlls/appwiz.cpl/addons.c
+++++ b/dlls/appwiz.cpl/addons.c
++@@ -48,7 +48,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(appwizcpl);
++ #ifdef __i386__
++ #define GECKO_ARCH "x86"
++ #define GECKO_SHA "26cecc47706b091908f7f814bddb074c61beb8063318e9efc5a7f789857793d6"
++-#elif defined(__x86_64__)
+++#elif defined(__x86_64__) || defined(__aarch64__)
++ #define GECKO_ARCH "x86_64"
++ #define GECKO_SHA "e590b7d988a32d6aa4cf1d8aa3aa3d33766fdd4cf4c89c2dcc2095ecb28d066f"
++ #else
++@@ -57,7 +57,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(appwizcpl);
++ #endif
++ 
++ #define MONO_VERSION "9.4.0"
++-#if defined(__i386__) || defined(__x86_64__)
+++#if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
++ #define MONO_ARCH "x86"
++ #define MONO_SHA "cf6173ae94b79e9de13d9a74cdb2560a886fc3d271f9489acb1cfdbd961cacb2"
++ #else
++diff --git a/dlls/mscoree/metahost.c b/dlls/mscoree/metahost.c
++index e1dd00656e94..569fa21ad325 100644
++--- a/dlls/mscoree/metahost.c
+++++ b/dlls/mscoree/metahost.c
++@@ -711,7 +711,7 @@ HRESULT ICLRRuntimeInfo_GetRuntimeHost(ICLRRuntimeInfo *iface, RuntimeHost **res
++ 
++ #ifdef __i386__
++ static const WCHAR libmono2_arch_dll[] = {'\\','b','i','n','\\','l','i','b','m','o','n','o','-','2','.','0','-','x','8','6','.','d','l','l',0};
++-#elif defined(__x86_64__)
+++#elif defined(__x86_64__) || defined(__aarch64__)
++ static const WCHAR libmono2_arch_dll[] = {'\\','b','i','n','\\','l','i','b','m','o','n','o','-','2','.','0','-','x','8','6','_','6','4','.','d','l','l',0};
++ #else
++ static const WCHAR libmono2_arch_dll[] = {'\\','b','i','n','\\','l','i','b','m','o','n','o','-','2','.','0','.','d','l','l',0};
+diff --git a/tur/hangover-wine/0010-vcrun-arm64x.patch b/tur/hangover-wine/0010-vcrun-arm64x.patch
+new file mode 100644
+index 000000000..53b64ae6f
+--- /dev/null
++++ b/tur/hangover-wine/0010-vcrun-arm64x.patch
+@@ -0,0 +1,42 @@
++From 1014c82259e9ae860422db0b41634f4f37198c06 Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Tue, 23 Apr 2024 12:58:04 +0000
++Subject: [PATCH] configure: Enable vcruntime140_1 and dpnsvcr for arm64x
++ builds.
++
++---
++ configure.ac                            | 4 ++--
++ dlls/vcruntime140_1/vcruntime140_1.spec | 2 +-
++ 2 files changed, 3 insertions(+), 3 deletions(-)
++
++diff --git a/configure.ac b/configure.ac
++index 6596f653fb1b..20da4c381442 100644
++--- a/configure.ac
+++++ b/configure.ac
++@@ -2338,7 +2338,7 @@ esac
++ dnl *** Check for modules to disable by default
++ 
++ enable_win16=${enable_win16:-i386}
++-enable_vcruntime140_1=${enable_vcruntime140_1:-x86_64,arm64ec}
+++enable_vcruntime140_1=${enable_vcruntime140_1:-x86_64,arm64ec,aarch64}
++ 
++ if test -n "$PE_ARCHS"
++ then
++@@ -2356,7 +2356,7 @@ fi
++ dnl Explicitly enable some programs for arm64ec
++ enable_cmd=${enable_cmd:-yes}
++ enable_dllhost=${enable_dllhost:-yes}
++-enable_dpnsvr=${enable_dpnsvr:-i386,x86_64,arm64ec}
+++enable_dpnsvr=${enable_dpnsvr:-i386,x86_64,arm64ec,aarch64}
++ enable_dxdiag=${enable_dxdiag:-yes}
++ enable_msiexec=${enable_msiexec:-yes}
++ enable_netsh=${enable_netsh:-yes}
++diff --git a/dlls/vcruntime140_1/vcruntime140_1.spec b/dlls/vcruntime140_1/vcruntime140_1.spec
++index 0b126fa95d46..af295940a61a 100644
++--- a/dlls/vcruntime140_1/vcruntime140_1.spec
+++++ b/dlls/vcruntime140_1/vcruntime140_1.spec
++@@ -1,3 +1,3 @@
++-@ cdecl __CxxFrameHandler4(ptr long ptr ptr)
+++@ cdecl -arch=arm64ec,x86_64 __CxxFrameHandler4(ptr long ptr ptr)
++ @ stub __NLG_Dispatch2
++ @ stub __NLG_Return2
+diff --git a/tur/hangover-wine/0011-arm64-sve.patch b/tur/hangover-wine/0011-arm64-sve.patch
+new file mode 100644
+index 000000000..38751815e
+--- /dev/null
++++ b/tur/hangover-wine/0011-arm64-sve.patch
+@@ -0,0 +1,54 @@
++From 8137e1c019010c13255e6fc2ff8768ffb3452d7e Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Mon, 19 Aug 2024 20:29:50 +0000
++Subject: [PATCH] include: Add arm64 SVE xstate headers.
++
++---
++ include/winnt.h | 13 +++++++++++++
++ 1 file changed, 13 insertions(+)
++
++diff --git a/include/winnt.h b/include/winnt.h
++index 0dae6a05b998..7f3cd0c66a3d 100644
++--- a/include/winnt.h
+++++ b/include/winnt.h
++@@ -1475,6 +1475,10 @@ typedef struct _KNONVOLATILE_CONTEXT_POINTERS
++ #define XSTATE_MASK_LEGACY                  (XSTATE_MASK_LEGACY_FLOATING_POINT | XSTATE_MASK_LEGACY_SSE)
++ #define XSTATE_MASK_GSSE                    (1 << XSTATE_GSSE)
++ 
+++#define XSTATE_ARM64_SVE 2
+++
+++#define XSTATE_MASK_ARM64_SVE (1 << XSTATE_ARM64_SVE)
+++
++ typedef struct _XSTATE_FEATURE
++ {
++     ULONG Offset;
++@@ -1505,6 +1509,13 @@ typedef struct _XSAVE_AREA_HEADER
++ }
++ XSAVE_AREA_HEADER, *PXSAVE_AREA_HEADER;
++ 
+++typedef struct _XSAVE_ARM64_SVE_HEADER {
+++    ULONG VectorLength;
+++    ULONG VectorRegisterOffset;
+++    ULONG PredicateRegisterOffset;
+++    ULONG Reserved[5];
+++} XSAVE_ARM64_SVE_HEADER, *PXSAVE_ARM64_SVE_HEADER;
+++
++ typedef struct _YMMCONTEXT
++ {
++     M128A Ymm0;
++@@ -1685,6 +1696,7 @@ typedef struct _KNONVOLATILE_CONTEXT_POINTERS
++ #define CONTEXT_ARM64_FLOATING_POINT  (CONTEXT_ARM64 | 0x00000004)
++ #define CONTEXT_ARM64_DEBUG_REGISTERS (CONTEXT_ARM64 | 0x00000008)
++ #define CONTEXT_ARM64_X18       (CONTEXT_ARM64 | 0x00000010)
+++#define CONTEXT_ARM64_XSTATE    (CONTEXT_ARM64 | 0x00000020)
++ #define CONTEXT_ARM64_FULL (CONTEXT_ARM64_CONTROL | CONTEXT_ARM64_INTEGER | CONTEXT_ARM64_FLOATING_POINT)
++ #define CONTEXT_ARM64_ALL  (CONTEXT_ARM64_FULL | CONTEXT_ARM64_DEBUG_REGISTERS | CONTEXT_ARM64_X18)
++ 
++@@ -1964,6 +1976,7 @@ typedef struct DECLSPEC_ALIGN(16) _ARM64EC_NT_CONTEXT
++ #define CONTEXT_INTEGER CONTEXT_ARM64_INTEGER
++ #define CONTEXT_FLOATING_POINT CONTEXT_ARM64_FLOATING_POINT
++ #define CONTEXT_DEBUG_REGISTERS CONTEXT_ARM64_DEBUG_REGISTERS
+++#define CONTEXT_XSTATE CONTEXT_ARM64_XSTATE
++ #define CONTEXT_FULL CONTEXT_ARM64_FULL
++ #define CONTEXT_ALL CONTEXT_ARM64_ALL
++ #define CONTEXT_RET_TO_GUEST CONTEXT_ARM64_RET_TO_GUEST
+diff --git a/tur/hangover-wine/0012-fex-avx.patch b/tur/hangover-wine/0012-fex-avx.patch
+new file mode 100644
+index 000000000..663eea162
+--- /dev/null
++++ b/tur/hangover-wine/0012-fex-avx.patch
+@@ -0,0 +1,236 @@
++From 18585c04db2a71cbf52ba7bf9665a5cef7e8a3c1 Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Wed, 21 Aug 2024 22:26:28 +0000
++Subject: [PATCH] FEX specific AVX support for arm64ec
++
++---
++ dlls/ntdll/signal_arm64ec.c  | 56 +++++++++++++++++++++++-------------
++ dlls/ntdll/signal_x86_64.c   |  2 +-
++ dlls/ntdll/unwind.h          | 16 +++++++++++
++ include/winnt.h              |  5 ++--
++ programs/wineboot/wineboot.c | 15 ++++++++++
++ 5 files changed, 71 insertions(+), 23 deletions(-)
++
++diff --git a/dlls/ntdll/signal_arm64ec.c b/dlls/ntdll/signal_arm64ec.c
++index 607e1f53c95e..c702c619b431 100644
++--- a/dlls/ntdll/signal_arm64ec.c
+++++ b/dlls/ntdll/signal_arm64ec.c
++@@ -36,6 +36,11 @@
++ #include "wine/debug.h"
++ #include "ntsyscalls.h"
++ 
+++union ARM64EC_NT_XCONTEXT {
+++    ARM64EC_NT_CONTEXT context;
+++    BYTE buffer[0x800];
+++};
+++
++ WINE_DEFAULT_DEBUG_CHANNEL(seh);
++ WINE_DECLARE_DEBUG_CHANNEL(relay);
++ 
++@@ -1218,7 +1223,11 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_context )
++  */
++ void dispatch_emulation( ARM64_NT_CONTEXT *arm_ctx )
++ {
++-    context_arm_to_x64( get_arm64ec_cpu_area()->ContextAmd64, arm_ctx );
+++    ARM64EC_NT_CONTEXT *context = get_arm64ec_cpu_area()->ContextAmd64;
+++    CONTEXT_EX *xctx;
+++
+++    RtlInitializeExtendedContext( context, ctx_flags_arm_to_x64( arm_ctx->ContextFlags), &xctx );
+++    context_arm_to_x64( context, arm_ctx );
++     get_arm64ec_cpu_area()->InSimulation = 1;
++     pBeginSimulation();
++ }
++@@ -1248,11 +1257,13 @@ static void dispatch_syscall( ARM64_NT_CONTEXT *context )
++ }
++ 
++ 
++-static void * __attribute__((used)) prepare_exception_arm64ec( EXCEPTION_RECORD *rec, ARM64EC_NT_CONTEXT *context, ARM64_NT_CONTEXT *arm_ctx )
+++static void * __attribute__((used)) prepare_exception_arm64ec( EXCEPTION_RECORD *rec, union ARM64EC_NT_XCONTEXT *context, ARM64_NT_CONTEXT *arm_ctx )
++ {
+++    CONTEXT_EX *xctx;
++     if (rec->ExceptionCode == STATUS_EMULATION_SYSCALL) dispatch_syscall( arm_ctx );
++-    context_arm_to_x64( context, arm_ctx );
++-    if (pResetToConsistentState) pResetToConsistentState( rec, &context->AMD64_Context, arm_ctx );
+++    RtlInitializeExtendedContext( context, ctx_flags_arm_to_x64( arm_ctx->ContextFlags ), &xctx );
+++    context_arm_to_x64( &context->context, arm_ctx );
+++    if (pResetToConsistentState) pResetToConsistentState( rec, &context->context.AMD64_Context, arm_ctx );
++     /* call x64 dispatcher if the thunk or the function pointer was modified */
++     if (pWow64PrepareForException || memcmp( KiUserExceptionDispatcher_thunk, KiUserExceptionDispatcher_orig,
++                                              sizeof(KiUserExceptionDispatcher_orig) ))
++@@ -1267,12 +1278,13 @@ void __attribute__((naked)) KiUserExceptionDispatcher( EXCEPTION_RECORD *rec, CO
++ {
++     asm( ".seh_proc \"#KiUserExceptionDispatcher\"\n\t"
++          ".seh_context\n\t"
++-         "sub sp, sp, #0x4d0\n\t"       /* sizeof(ARM64EC_NT_CONTEXT) */
++-         ".seh_stackalloc 0x4d0\n\t"
+++         "sub sp, sp, #0xcd0\n\t"       /* sizeof(union ARM64EC_NT_XCONTEXT) */
+++         ".seh_stackalloc 0xcd0\n\t"
++          ".seh_endprologue\n\t"
++-         "add x0, sp, #0x3b0+0x4d0\n\t" /* rec */
+++         "add x0, sp, #0xcd0\n\t"
+++         "add x0, x0, #0x3b0\n\t"       /* rec */
++          "mov x1, sp\n\t"               /* context */
++-         "add x2, sp, #0x4d0\n\t"       /* arm_ctx (context + 1) */
+++         "add x2, sp, #0xcd0\n\t"       /* arm_ctx (context + 1) */
++          "bl \"#prepare_exception_arm64ec\"\n\t"
++          "cbz x0, 1f\n\t"
++          /* bypass exit thunk to avoid messing up the stack */
++@@ -1280,8 +1292,9 @@ void __attribute__((naked)) KiUserExceptionDispatcher( EXCEPTION_RECORD *rec, CO
++          "ldr x16, [x16, #:lo12:__os_arm64x_dispatch_call_no_redirect]\n\t"
++          "mov x9, x0\n\t"
++          "blr x16\n"
++-         "1:\tadd x0, sp, #0x3b0+0x4d0\n\t" /* rec */
++-         "mov x1, sp\n\t"                   /* context */
+++         "1:\tadd x0, sp, #0xcd0\n\t"
+++         "add x0, x0, #0x3b0\n\t"       /* rec */
+++         "mov x1, sp\n\t"               /* context */
++          "bl #dispatch_exception\n\t"
++          "brk #1\n\t"
++          ".seh_endproc" );
++@@ -1295,11 +1308,12 @@ static void __attribute__((used)) dispatch_apc( void (CALLBACK *func)(ULONG_PTR,
++                                                 ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3,
++                                                 BOOLEAN alertable, ARM64_NT_CONTEXT *arm_ctx )
++ {
++-    ARM64EC_NT_CONTEXT context;
++-
++-    context_arm_to_x64( &context, arm_ctx );
++-    func( arg1, arg2, arg3, &context.AMD64_Context );
++-    NtContinue( &context.AMD64_Context, alertable );
+++    union ARM64EC_NT_XCONTEXT context;
+++    CONTEXT_EX *xctx;
+++    RtlInitializeExtendedContext( &context, ctx_flags_arm_to_x64( arm_ctx->ContextFlags), &xctx );
+++    context_arm_to_x64( &context.context, arm_ctx );
+++    func( arg1, arg2, arg3, &context.context.AMD64_Context );
+++    NtContinue( &context.context.AMD64_Context, alertable );
++ }
++ __ASM_GLOBAL_FUNC( "#KiUserApcDispatcher",
++                    ".seh_context\n\t"
++@@ -2054,7 +2068,9 @@ void __attribute__((naked)) RtlUserThreadStart( PRTL_THREAD_START_ROUTINE entry,
++  */
++ void WINAPI LdrInitializeThunk( CONTEXT *arm_context, ULONG_PTR unk2, ULONG_PTR unk3, ULONG_PTR unk4 )
++ {
++-    ARM64EC_NT_CONTEXT context;
+++    union ARM64EC_NT_XCONTEXT context;
+++    CONTEXT_EX *xctx;
+++    RtlInitializeExtendedContext( &context, ctx_flags_arm_to_x64( arm_context->ContextFlags), &xctx );
++ 
++     if (!__os_arm64x_check_call)
++     {
++@@ -2065,10 +2081,10 @@ void WINAPI LdrInitializeThunk( CONTEXT *arm_context, ULONG_PTR unk2, ULONG_PTR
++         __os_arm64x_set_x64_information = LdrpSetX64Information;
++     }
++ 
++-    context_arm_to_x64( &context, (ARM64_NT_CONTEXT *)arm_context );
++-    loader_init( &context.AMD64_Context, (void **)&context.X0 );
++-    TRACE_(relay)( "\1Starting thread proc %p (arg=%p)\n", (void *)context.X0, (void *)context.X1 );
++-    NtContinue( &context.AMD64_Context, TRUE );
+++    context_arm_to_x64( &context.context, (ARM64_NT_CONTEXT *)arm_context );
+++    loader_init( &context.context.AMD64_Context, (void **)&context.context.X0 );
+++    TRACE_(relay)( "\1Starting thread proc %p (arg=%p)\n", (void *)context.context.X0, (void *)context.context.X1 );
+++    NtContinue( &context.context.AMD64_Context, TRUE );
++ }
++ 
++ 
++diff --git a/dlls/ntdll/signal_x86_64.c b/dlls/ntdll/signal_x86_64.c
++index 24e513de0ef2..9c9bf8a5328b 100644
++--- a/dlls/ntdll/signal_x86_64.c
+++++ b/dlls/ntdll/signal_x86_64.c
++@@ -83,7 +83,7 @@ __ASM_GLOBAL_FUNC( "EXP+#KiUserExceptionDispatcher",
++                    "test %rax,%rax\n\t"
++                    "jz 1f\n\t"
++                    "subq $0x28,%rsp\n\t"
++-                   "leaq 0x30+0x3b0+0x4d0(%rsp),%rcx\n\t" /* rec */
+++                   "leaq 0x30+0x3b0+0xcd0(%rsp),%rcx\n\t" /* rec */
++                    "leaq 0x30(%rsp),%rdx\n\t"             /* context */
++                    "call *%rax\n"
++                    "addq $0x28,%rsp\n"
++diff --git a/dlls/ntdll/unwind.h b/dlls/ntdll/unwind.h
++index faca8a259fb6..71a4d23da043 100644
++--- a/dlls/ntdll/unwind.h
+++++ b/dlls/ntdll/unwind.h
++@@ -36,6 +36,7 @@ static inline ULONG ctx_flags_x64_to_arm( ULONG flags )
++     if (flags & CONTEXT_AMD64_CONTROL) ret |= CONTEXT_ARM64_CONTROL;
++     if (flags & CONTEXT_AMD64_INTEGER) ret |= CONTEXT_ARM64_INTEGER;
++     if (flags & CONTEXT_AMD64_FLOATING_POINT) ret |= CONTEXT_ARM64_FLOATING_POINT;
+++    if (flags & CONTEXT_AMD64_XSTATE) ret |= CONTEXT_ARM64_FEX_YMMSTATE;
++     return ret;
++ }
++ 
++@@ -47,6 +48,7 @@ static inline ULONG ctx_flags_arm_to_x64( ULONG flags )
++     if (flags & CONTEXT_ARM64_CONTROL) ret |= CONTEXT_AMD64_CONTROL;
++     if (flags & CONTEXT_ARM64_INTEGER) ret |= CONTEXT_AMD64_INTEGER;
++     if (flags & CONTEXT_ARM64_FLOATING_POINT) ret |= CONTEXT_AMD64_FLOATING_POINT;
+++    if (flags & CONTEXT_ARM64_FEX_YMMSTATE) ret |= CONTEXT_AMD64_XSTATE;
++     return ret;
++ }
++ 
++@@ -166,6 +168,13 @@ static inline void context_x64_to_arm( ARM64_NT_CONTEXT *arm_ctx, const ARM64EC_
++     fpcsr = mxcsr_to_fpcsr( ec_ctx->AMD64_MxCsr );
++     arm_ctx->Fpcr = fpcsr;
++     arm_ctx->Fpsr = fpcsr >> 32;
+++
+++    if ((ec_ctx->ContextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
+++    {
+++        CONTEXT_EX *ec_xctx = (CONTEXT_EX *)(ec_ctx + 1);
+++        YMMCONTEXT *ec_ymm = RtlLocateExtendedFeature( ec_xctx, XSTATE_AVX, NULL );
+++        memcpy( arm_ctx->V + 16, ec_ymm, sizeof(*ec_ymm) );
+++    }
++ }
++ 
++ static inline void context_arm_to_x64( ARM64EC_NT_CONTEXT *ec_ctx, const ARM64_NT_CONTEXT *arm_ctx )
++@@ -216,6 +225,13 @@ static inline void context_arm_to_x64( ARM64EC_NT_CONTEXT *ec_ctx, const ARM64_N
++     ec_ctx->X17_3 = arm_ctx->X17 >> 48;
++ 
++     memcpy( ec_ctx->V, arm_ctx->V, sizeof(ec_ctx->V) );
+++
+++    if ((arm_ctx->ContextFlags & CONTEXT_ARM64_FEX_YMMSTATE) == CONTEXT_ARM64_FEX_YMMSTATE)
+++    {
+++        CONTEXT_EX *ec_xctx = (CONTEXT_EX *)(ec_ctx + 1);
+++        YMMCONTEXT *ec_ymm = RtlLocateExtendedFeature( ec_xctx, XSTATE_AVX, NULL );
+++        memcpy( ec_ymm, arm_ctx->V + 16, sizeof(*ec_ymm) );
+++    }
++ }
++ 
++ #endif /* __aarch64__ || __arm64ec__ */
++diff --git a/include/winnt.h b/include/winnt.h
++index 7f3cd0c66a3d..aaa7aaedae04 100644
++--- a/include/winnt.h
+++++ b/include/winnt.h
++@@ -1695,8 +1695,9 @@ typedef struct _KNONVOLATILE_CONTEXT_POINTERS
++ #define CONTEXT_ARM64_INTEGER         (CONTEXT_ARM64 | 0x00000002)
++ #define CONTEXT_ARM64_FLOATING_POINT  (CONTEXT_ARM64 | 0x00000004)
++ #define CONTEXT_ARM64_DEBUG_REGISTERS (CONTEXT_ARM64 | 0x00000008)
++-#define CONTEXT_ARM64_X18       (CONTEXT_ARM64 | 0x00000010)
++-#define CONTEXT_ARM64_XSTATE    (CONTEXT_ARM64 | 0x00000020)
+++#define CONTEXT_ARM64_X18             (CONTEXT_ARM64 | 0x00000010)
+++#define CONTEXT_ARM64_XSTATE          (CONTEXT_ARM64 | 0x00000020)
+++#define CONTEXT_ARM64_FEX_YMMSTATE   (CONTEXT_ARM64 | 0x00000040)
++ #define CONTEXT_ARM64_FULL (CONTEXT_ARM64_CONTROL | CONTEXT_ARM64_INTEGER | CONTEXT_ARM64_FLOATING_POINT)
++ #define CONTEXT_ARM64_ALL  (CONTEXT_ARM64_FULL | CONTEXT_ARM64_DEBUG_REGISTERS | CONTEXT_ARM64_X18)
++ 
++diff --git a/programs/wineboot/wineboot.c b/programs/wineboot/wineboot.c
++index 318939d1daa6..69f91bf390fb 100644
++--- a/programs/wineboot/wineboot.c
+++++ b/programs/wineboot/wineboot.c
++@@ -374,6 +374,21 @@ static UINT64 read_tsc_frequency(void)
++ 
++ static void initialize_xstate_features(struct _KUSER_SHARED_DATA *data)
++ {
+++    XSTATE_CONFIGURATION *xstate = &data->XState;
+++
+++    xstate->EnabledFeatures = (1 << XSTATE_LEGACY_FLOATING_POINT) | (1 << XSTATE_LEGACY_SSE) | (1 << XSTATE_AVX);
+++    xstate->EnabledVolatileFeatures = xstate->EnabledFeatures;
+++    xstate->AllFeatureSize = 0x340;
+++
+++    xstate->OptimizedSave = 0;
+++    xstate->CompactionEnabled = 0;
+++
+++    xstate->Features[0].Size = xstate->AllFeatures[0] = offsetof(XSAVE_FORMAT, XmmRegisters);
+++    xstate->Features[1].Size = xstate->AllFeatures[1] = sizeof(M128A) * 16;
+++    xstate->Features[1].Offset = xstate->Features[0].Size;
+++    xstate->Features[2].Offset = 0x240;
+++    xstate->Features[2].Size = 0x100;
+++    xstate->Size = 0x340;
++ }
++ 
++ static UINT64 read_tsc_frequency(void)
+diff --git a/tur/hangover-wine/0013-inline-asm.patch b/tur/hangover-wine/0013-inline-asm.patch
+new file mode 100644
+index 000000000..f8a829769
+--- /dev/null
++++ b/tur/hangover-wine/0013-inline-asm.patch
+@@ -0,0 +1,95 @@
++From 2892591f9a46ccb17062c967f69f4afbe1c9f30b Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Tue, 1 Oct 2024 14:34:37 +0000
++Subject: [PATCH] Avoid MS-style inline ASM on i386 clang.
++
++---
++ dlls/dinput/dinput.c    | 4 ++--
++ dlls/riched20/txthost.c | 6 +++---
++ dlls/riched20/txtsrv.c  | 6 +++---
++ 3 files changed, 8 insertions(+), 8 deletions(-)
++
++diff --git a/dlls/dinput/dinput.c b/dlls/dinput/dinput.c
++index e53eea4e2921..f866f2663a49 100644
++--- a/dlls/dinput/dinput.c
+++++ b/dlls/dinput/dinput.c
++@@ -45,7 +45,7 @@ static inline struct dinput *impl_from_IDirectInput8W( IDirectInput8W *iface )
++     return CONTAINING_RECORD( iface, struct dinput, IDirectInput8W_iface );
++ }
++ 
++-#if defined __i386__ && defined _MSC_VER
+++#if defined __i386__ && defined _MSC_VER && !defined __clang__
++ __declspec(naked) BOOL enum_callback_wrapper(void *callback, const void *instance, void *ref)
++ {
++     __asm
++@@ -59,7 +59,7 @@ __declspec(naked) BOOL enum_callback_wrapper(void *callback, const void *instanc
++         ret
++     }
++ }
++-#elif defined __i386__ && defined __GNUC__
+++#elif defined __i386__
++ extern BOOL enum_callback_wrapper(void *callback, const void *instance, void *ref);
++ __ASM_GLOBAL_FUNC( enum_callback_wrapper,
++     "pushl %ebp\n\t"
++diff --git a/dlls/riched20/txthost.c b/dlls/riched20/txthost.c
++index 8ae804377733..6afd85ea200d 100644
++--- a/dlls/riched20/txthost.c
+++++ b/dlls/riched20/txthost.c
++@@ -623,7 +623,7 @@ HRESULT __thiscall ITextHostImpl_TxGetHorzExtent( ITextHost2 *iface, LONG *horz_
++ #ifdef __ASM_USE_THISCALL_WRAPPER
++ 
++ #define STDCALL(func) (void *) __stdcall_ ## func
++-#ifdef _MSC_VER
+++#if defined(_MSC_VER) && !defined(__clang__)
++ #define DEFINE_STDCALL_WRAPPER(num,func,args) \
++     __declspec(naked) HRESULT __stdcall_##func(void) \
++     { \
++@@ -633,7 +633,7 @@ HRESULT __thiscall ITextHostImpl_TxGetHorzExtent( ITextHost2 *iface, LONG *horz_
++         __asm mov eax, [ecx] \
++         __asm jmp dword ptr [eax + 4*num] \
++     }
++-#else /* _MSC_VER */
+++#else /* defined(_MSC_VER) && !defined(__clang__) */
++ #define DEFINE_STDCALL_WRAPPER(num,func,args) \
++    extern HRESULT __stdcall_ ## func(void); \
++    __ASM_GLOBAL_FUNC(__stdcall_ ## func, \
++@@ -642,7 +642,7 @@ HRESULT __thiscall ITextHostImpl_TxGetHorzExtent( ITextHost2 *iface, LONG *horz_
++                    "pushl %eax\n\t" \
++                    "movl (%ecx), %eax\n\t" \
++                    "jmp *(4*(" #num "))(%eax)" )
++-#endif /* _MSC_VER */
+++#endif /* defined(_MSC_VER) && !defined(__clang__) */
++ 
++ DEFINE_STDCALL_WRAPPER(3,ITextHostImpl_TxGetDC,4)
++ DEFINE_STDCALL_WRAPPER(4,ITextHostImpl_TxReleaseDC,8)
++diff --git a/dlls/riched20/txtsrv.c b/dlls/riched20/txtsrv.c
++index 5c63b3daf9af..ef1189c9a8ad 100644
++--- a/dlls/riched20/txtsrv.c
+++++ b/dlls/riched20/txtsrv.c
++@@ -483,7 +483,7 @@ HRESULT __thiscall fnTextSrv_TxGetCachedSize(ITextServices *iface, DWORD *pdwWid
++ #ifdef __ASM_USE_THISCALL_WRAPPER
++ 
++ #define STDCALL(func) (void *) __stdcall_ ## func
++-#ifdef _MSC_VER
+++#if defined(_MSC_VER) && !defined(__clang__)
++ #define DEFINE_STDCALL_WRAPPER(num,func) \
++     __declspec(naked) HRESULT __stdcall_##func(void) \
++     { \
++@@ -493,7 +493,7 @@ HRESULT __thiscall fnTextSrv_TxGetCachedSize(ITextServices *iface, DWORD *pdwWid
++         __asm mov eax, [ecx] \
++         __asm jmp dword ptr [eax + 4*num] \
++     }
++-#else /* _MSC_VER */
+++#else /* defined(_MSC_VER) && !defined(__clang__) */
++ #define DEFINE_STDCALL_WRAPPER(num,func) \
++    extern HRESULT __stdcall_ ## func(void); \
++    __ASM_GLOBAL_FUNC(__stdcall_ ## func, \
++@@ -502,7 +502,7 @@ HRESULT __thiscall fnTextSrv_TxGetCachedSize(ITextServices *iface, DWORD *pdwWid
++                    "pushl %eax\n\t" \
++                    "movl (%ecx), %eax\n\t" \
++                    "jmp *(4*(" #num "))(%eax)" )
++-#endif /* _MSC_VER */
+++#endif /* defined(_MSC_VER) && !defined(__clang__) */
++ 
++ DEFINE_STDCALL_WRAPPER(3, ITextServices_TxSendMessage)
++ DEFINE_STDCALL_WRAPPER(4, ITextServices_TxDraw)
+diff --git a/tur/hangover-wine/0014-fex-sve-workaround.patch b/tur/hangover-wine/0014-fex-sve-workaround.patch
+new file mode 100644
+index 000000000..2466ea60d
+--- /dev/null
++++ b/tur/hangover-wine/0014-fex-sve-workaround.patch
+@@ -0,0 +1,73 @@
++From f9d697d9a528d2ed7a0e3d86b448737c2f628811 Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Wed, 21 Aug 2024 22:27:49 +0000
++Subject: [PATCH] ntdll: Setup the FEX SVE predicate reg after handling
++ signals.
++
++No WOA devices ship with SVE, so implementing this correctly by
++preserving the SVE state in xstate isn't really viable for now so just
++hardcode the FEX values.
++---
++ dlls/ntdll/unix/signal_arm64.c | 27 +++++++++++++++++++++++++--
++ 1 file changed, 25 insertions(+), 2 deletions(-)
++
++diff --git a/dlls/ntdll/unix/signal_arm64.c b/dlls/ntdll/unix/signal_arm64.c
++index 8ec4251feca9..7d6f4937bfc0 100644
++--- a/dlls/ntdll/unix/signal_arm64.c
+++++ b/dlls/ntdll/unix/signal_arm64.c
++@@ -84,10 +84,20 @@ WINE_DEFAULT_DEBUG_CHANNEL(seh);
++ static struct _aarch64_ctx *get_extended_sigcontext( const ucontext_t *sigcontext, unsigned int magic )
++ {
++     struct _aarch64_ctx *ctx = (struct _aarch64_ctx *)sigcontext->uc_mcontext.__reserved;
++-    while ((char *)ctx < (char *)(&sigcontext->uc_mcontext + 1) && ctx->magic && ctx->size)
+++    BOOL extra = FALSE;
+++    while ((extra || (char *)ctx < (char *)(&sigcontext->uc_mcontext + 1)) && ctx->magic && ctx->size)
++     {
++         if (ctx->magic == magic) return ctx;
++-        ctx = (struct _aarch64_ctx *)((char *)ctx + ctx->size);
+++
+++        if (ctx->magic == EXTRA_MAGIC)
+++        {
+++            ctx = (struct _aarch64_ctx *)((struct extra_context *)ctx)->datap;
+++            extra = TRUE;
+++        }
+++        else
+++        {
+++            ctx = (struct _aarch64_ctx *)((char *)ctx + ctx->size);
+++        }
++     }
++     return NULL;
++ }
++@@ -97,6 +107,11 @@ static struct fpsimd_context *get_fpsimd_context( const ucontext_t *sigcontext )
++     return (struct fpsimd_context *)get_extended_sigcontext( sigcontext, FPSIMD_MAGIC );
++ }
++ 
+++static struct sve_context *get_sve_context( const ucontext_t *sigcontext )
+++{
+++    return (struct sve_context *)get_extended_sigcontext( sigcontext, SVE_MAGIC );
+++}
+++
++ static DWORD64 get_fault_esr( ucontext_t *sigcontext )
++ {
++     struct esr_context *esr = (struct esr_context *)get_extended_sigcontext( sigcontext, ESR_MAGIC );
++@@ -1321,12 +1336,20 @@ static void usr2_handler( int signal, siginfo_t *siginfo, void *sigcontext )
++ #ifdef linux
++     {
++         struct fpsimd_context *fp = get_fpsimd_context( sigcontext );
+++        struct sve_context *sve = get_sve_context( sigcontext );
++         if (fp)
++         {
++             fp->fpcr = frame->fpcr;
++             fp->fpsr = frame->fpsr;
++             memcpy( fp->vregs, frame->v, sizeof(fp->vregs) );
++         }
+++
+++        if (sve)
+++        {
+++            /* setup FEX SVE state */
+++            ULONG64 vq = sve_vq_from_vl(sve->vl);
+++            *(UINT16 *)((BYTE *)sve + SVE_SIG_PREG_OFFSET(vq, 6)) = 0xffff;
+++        }
++     }
++ #elif defined(__APPLE__)
++     context->uc_mcontext->__ns.__fpcr = frame->fpcr;
+diff --git a/tur/hangover-wine/0015-syscall-workaround.patch b/tur/hangover-wine/0015-syscall-workaround.patch
+new file mode 100644
+index 000000000..c695eadec
+--- /dev/null
++++ b/tur/hangover-wine/0015-syscall-workaround.patch
+@@ -0,0 +1,61 @@
++From 07feab5d109f6867862b3617d7badf562ea766f0 Mon Sep 17 00:00:00 2001
++From: Billy Laws <blaws05@gmail.com>
++Date: Thu, 5 Sep 2024 15:08:30 +0000
++Subject: [PATCH] ntdll: Avoid calling syscall callbacks when InSimulation is
++ set.
++
++---
++ dlls/ntdll/signal_arm64ec.c | 5 +++--
++ dlls/ntdll/tests/wow64.c    | 9 +++++++--
++ 2 files changed, 10 insertions(+), 4 deletions(-)
++
++diff --git a/dlls/ntdll/signal_arm64ec.c b/dlls/ntdll/signal_arm64ec.c
++index c702c619b431..b48844ed2752 100644
++--- a/dlls/ntdll/signal_arm64ec.c
+++++ b/dlls/ntdll/signal_arm64ec.c
++@@ -82,8 +82,9 @@ static inline BOOL is_valid_arm64ec_frame( ULONG_PTR frame )
++ 
++ static inline BOOL enter_syscall_callback(void)
++ {
++-    if (get_arm64ec_cpu_area()->InSyscallCallback) return FALSE;
++-    get_arm64ec_cpu_area()->InSyscallCallback = 1;
+++    CHPE_V2_CPU_AREA_INFO *cpu_area = get_arm64ec_cpu_area();
+++    if (cpu_area->InSyscallCallback || cpu_area->InSimulation) return FALSE;
+++    cpu_area->InSyscallCallback = 1;
++     return TRUE;
++ }
++ 
++diff --git a/dlls/ntdll/tests/wow64.c b/dlls/ntdll/tests/wow64.c
++index 04b6db728dec..8ef8f4ad31af 100644
++--- a/dlls/ntdll/tests/wow64.c
+++++ b/dlls/ntdll/tests/wow64.c
++@@ -1505,7 +1505,7 @@ static void expect_notifications_( ULONG64 *results, UINT count, const struct ex
++     if (syscall)
++     {
++         CHPE_V2_CPU_AREA_INFO *cpu_area = NtCurrentTeb()->ChpeV2CpuAreaInfo;
++-        if (cpu_area && cpu_area->InSyscallCallback) count = 0;
+++        if (cpu_area && (cpu_area->InSyscallCallback || cpu_area->InSimulation)) count = 0;
++     }
++ #endif
++ 
++@@ -1781,7 +1781,8 @@ static void test_notifications( HMODULE module, CROSS_PROCESS_WORK_LIST *list )
++         status = NtMapViewOfSection( mapping, GetCurrentProcess(), &addr, 0, 0, &offset, &size,
++                                      ViewShare, 0, PAGE_READONLY );
++ #ifdef _WIN64
++-        if (NtCurrentTeb()->ChpeV2CpuAreaInfo->InSyscallCallback)
+++        if (NtCurrentTeb()->ChpeV2CpuAreaInfo->InSyscallCallback ||
+++            NtCurrentTeb()->ChpeV2CpuAreaInfo->InSimulation)
++         {
++             ok( status == STATUS_SUCCESS, "NtMapViewOfSection failed %lx\n", status );
++             expect_notifications( results, 0, NULL, TRUE );
++@@ -2219,6 +2220,10 @@ static void test_memory_notifications(void)
++         NtCurrentTeb()->ChpeV2CpuAreaInfo->InSyscallCallback++;
++         test_notifications( module, (CROSS_PROCESS_WORK_LIST *)info->CrossProcessWorkList );
++         NtCurrentTeb()->ChpeV2CpuAreaInfo->InSyscallCallback--;
+++
+++        NtCurrentTeb()->ChpeV2CpuAreaInfo->InSimulation++;
+++        test_notifications( module, (CROSS_PROCESS_WORK_LIST *)info->CrossProcessWorkList );
+++        NtCurrentTeb()->ChpeV2CpuAreaInfo->InSimulation--;
++     }
++     skip( "arm64ec shared info not found\n" );
++ }
