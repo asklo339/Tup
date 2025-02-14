@@ -21,6 +21,8 @@ TERMUX_PKG_EXTRA_HOSTBUILD_CONFIGURE_ARGS="
 TERMUX_PKG_BLACKLISTED_ARCHES="arm, i686, x86_64"
 
 TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
+ac_cv_func_shm_open=yes
+ac_cv_func_shm_unlink=yes
 enable_wineandroid_drv=no
 --prefix=$TERMUX_PREFIX/opt/proton-wine
 --exec-prefix=$TERMUX_PREFIX/opt/proton-wine
