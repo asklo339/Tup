@@ -116,6 +116,8 @@ termux_step_pre_configure() {
 	CXXFLAGS="${CXXFLAGS/-fstack-protector-strong/}"
 	LDFLAGS="${LDFLAGS/-Wl,-z,relro,-z,now/}"
 
+        export CPPFLAGS+=" -Wno-alloca -Wno-strict-prototypes"
+
 	# Suppress implicit function declaration errors
 	CFLAGS+=" -Wno-implicit-function-declaration"
 	CXXFLAGS+=" -Wno-implicit-function-declaration"
