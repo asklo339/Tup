@@ -31,6 +31,7 @@ enable_wineandroid_drv=no
 --enable-nls
 --disable-tests
 --without-alsa
+--disable-fsync
 --without-capi
 --without-coreaudio
 --without-cups
