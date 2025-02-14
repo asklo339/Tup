@@ -123,7 +123,7 @@ termux_step_pre_configure() {
 	# Suppress implicit function declaration errors
 	CFLAGS+=" -Wno-implicit-function-declaration"
 	CXXFLAGS+=" -Wno-implicit-function-declaration"
-        CPPFLAGS+=" -Wno-alloca -Wno-strict-prototypes"
+        
 
 	# Link android-spawn
 	LDFLAGS+=" -landroid-spawn -landroid-shmem"
