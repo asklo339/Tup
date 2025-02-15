@@ -6,8 +6,8 @@ TERMUX_PKG_MAINTAINER="@termux-user-repository"
 TERMUX_PKG_VERSION=9.0
 TERMUX_PKG_REVISION=2
 _REAL_VERSION="${TERMUX_PKG_VERSION/\~/-}"
-TERMUX_PKG_SRCURL=https://github.com/asklo339/Tup/releases/download/Fix/wine-proton-9.0-arm64ec.tar.xz
-TERMUX_PKG_SHA256=86cc52afae159ca5a269a6f61e26919316829190e9720b987a15cef1af6bf467
+TERMUX_PKG_SRCURL=https://github.com/asklo339/Tup/releases/download/upstream/wine-proton-9.0-arm64ec.tar.xz
+TERMUX_PKG_SHA256=4c3708f06dfb6b4e4924325fd971aad4cf7dd3e68b9610b19e031018f9b45a33
 TERMUX_PKG_DEPENDS="fontconfig, libdrm, freetype, krb5, libandroid-spawn, libandroid-shmem, libc++, libgmp, libgnutls, libxcb, libxcomposite, libxcursor, libxfixes, libxrender, mesa, opengl, pulseaudio, sdl2, vulkan-loader, xorg-xrandr"
 TERMUX_PKG_ANTI_BUILD_DEPENDS="vulkan-loader"
 TERMUX_PKG_BUILD_DEPENDS="libandroid-spawn-static, vulkan-loader-generic, libandroid-shmem-static"
@@ -18,7 +18,7 @@ TERMUX_PKG_EXTRA_HOSTBUILD_CONFIGURE_ARGS="
 --disable-tests
 "
 
-TERMUX_PKG_BLACKLISTED_ARCHES="arm, i686, x86_64"
+TERMUX_PKG_BLACKLISTED_ARCHES="arm, aarch64, arm64ec"
 
 TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
 ac_cv_func_shm_open=yes
@@ -72,7 +72,7 @@ enable_wineandroid_drv=no
 --without-xshape
 --without-xshm
 --without-xxf86vm
---enable-archs=i386,aarch64,arm64ec
+--enable-archs=i386,x86_64
 "
 # TODO: `--enable-archs=arm` doesn't build with option `--with-mingw=clang`, but
 # TODO: `arm64ec` doesn't build with option `--with-mingw` (arm64ec-w64-mingw32-clang)
