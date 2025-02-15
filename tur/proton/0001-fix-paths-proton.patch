@@ -1,7 +1,8 @@
-diff -uNr a/dlls/crypt32/unixlib.c b/dlls/crypt32/unixlib.c
+diff --git a/dlls/crypt32/unixlib.c b/dlls/crypt32/unixlib.c
+index feb0c36..1659d82 100644
 --- a/dlls/crypt32/unixlib.c
 +++ b/dlls/crypt32/unixlib.c
-@@ -619,6 +619,7 @@
+@@ -619,6 +619,7 @@ static const char * const CRYPT_knownLocations[] = {
   "/usr/local/share/certs/",
   "/etc/sfw/openssl/certs",
   "/etc/security/cacerts",  /* Android */
@@ -9,10 +10,11 @@ diff -uNr a/dlls/crypt32/unixlib.c b/dlls/crypt32/unixlib.c
  };
  
  static void load_root_certs(void)
-diff -uNr a/dlls/dbghelp/macho_module.c b/dlls/dbghelp/macho_module.c
+diff --git a/dlls/dbghelp/macho_module.c b/dlls/dbghelp/macho_module.c
+index 90c38b5..7e054f2 100644
 --- a/dlls/dbghelp/macho_module.c
 +++ b/dlls/dbghelp/macho_module.c
-@@ -1578,7 +1578,7 @@
+@@ -1624,7 +1624,7 @@ static BOOL macho_search_and_load_file(struct process* pcs, const WCHAR* filenam
      {
          const WCHAR* fallback = process_getenv(pcs, L"DYLD_FALLBACK_LIBRARY_PATH");
          if (!fallback)
@@ -21,22 +23,24 @@ diff -uNr a/dlls/dbghelp/macho_module.c b/dlls/dbghelp/macho_module.c
          ret = search_unix_path(p, fallback, macho_load_file_cb, &load_params);
      }
      if (!ret && p == filename)
-diff -uNr a/dlls/dbghelp/module.c b/dlls/dbghelp/module.c
+diff --git a/dlls/dbghelp/module.c b/dlls/dbghelp/module.c
+index 644e92e..ffcb86e 100644
 --- a/dlls/dbghelp/module.c
 +++ b/dlls/dbghelp/module.c
-@@ -709,9 +709,9 @@
+@@ -671,10 +671,10 @@ static struct image_file_map* image_locate_build_id_target(const BYTE* id, unsig
+     fmap_link = HeapAlloc(GetProcessHeap(), 0, sizeof(*fmap_link));
+     if (!fmap_link) return NULL;
  
-     if (!(fmap_link = HeapAlloc(GetProcessHeap(), 0, sizeof(*fmap_link))))
-         return NULL;
--    if (image_locate_build_id_target_in_dir(fmap_link, id, idlen, L"/usr/lib/debug/.build-id/"))
-+    if (image_locate_build_id_target_in_dir(fmap_link, id, idlen, L"@TERMUX_PREFIX@/lib/debug/.build-id/"))
-         return fmap_link;
--    if (image_locate_build_id_target_in_dir(fmap_link, id, idlen, L"/usr/lib/.build-id/"))
-+    if (image_locate_build_id_target_in_dir(fmap_link, id, idlen, L"@TERMUX_PREFIX@/lib/.build-id/"))
-         return fmap_link;
- 
-     sz = GetEnvironmentVariableW(L"WINEHOMEDIR", NULL, 0);
-@@ -778,7 +778,7 @@
+-    p = malloc(sizeof(L"/usr/lib/debug/.build-id/") +
++    p = malloc(sizeof(L"@TERMUX_PREFIX@/lib/debug/.build-id/") +
+                (idlen * 2 + 1) * sizeof(WCHAR) + sizeof(L".debug"));
+     if (!p) goto fail;
+-    wcscpy(p, L"/usr/lib/debug/.build-id/");
++    wcscpy(p, L"@TERMUX_PREFIX@/lib/debug/.build-id/");
+     z = p + wcslen(p);
+     if (idlen)
+     {
+@@ -778,7 +778,7 @@ struct image_file_map* image_load_debugaltlink(struct image_file_map* fmap, stru
                  if (!ret)
                  {
                      dst = HeapAlloc(GetProcessHeap(), 0,
@@ -45,7 +49,7 @@ diff -uNr a/dlls/dbghelp/module.c b/dlls/dbghelp/module.c
                      if (dst)
                      {
                          WCHAR* p;
-@@ -788,7 +788,7 @@
+@@ -788,7 +788,7 @@ struct image_file_map* image_load_debugaltlink(struct image_file_map* fmap, stru
                           * where the alternate file is...
                           * so try both
                           */
@@ -54,10 +58,11 @@ diff -uNr a/dlls/dbghelp/module.c b/dlls/dbghelp/module.c
                          p += wcslen(dst);
                          MultiByteToWideChar(CP_UNIXCP, 0, data, -1, p, filename_len);
                          ret = image_check_debug_link_gnu_id(dst, fmap_link, id, idlen);
-diff -uNr a/dlls/msvcrt/tests/environ.c b/dlls/msvcrt/tests/environ.c
+diff --git a/dlls/msvcrt/tests/environ.c b/dlls/msvcrt/tests/environ.c
+index 1d1bfd2..8784fba 100644
 --- a/dlls/msvcrt/tests/environ.c
 +++ b/dlls/msvcrt/tests/environ.c
-@@ -41,7 +41,8 @@
+@@ -43,7 +43,8 @@ static const char *a_very_long_env_string =
   "/lib/mingw32/3.4.2/;"
   "/lib/;"
   "/usr/lib/mingw32/3.4.2/;"
@@ -67,26 +72,29 @@ diff -uNr a/dlls/msvcrt/tests/environ.c b/dlls/msvcrt/tests/environ.c
  
  static char ***(__cdecl *p__p__environ)(void);
  static WCHAR ***(__cdecl *p__p__wenviron)(void);
-diff -uNr a/dlls/ntdll/unix/server.c b/dlls/ntdll/unix/server.c
+diff --git a/dlls/ntdll/unix/server.c b/dlls/ntdll/unix/server.c
+index bfe33d9..639ae56 100644
 --- a/dlls/ntdll/unix/server.c
 +++ b/dlls/ntdll/unix/server.c
-@@ -1233,10 +1233,10 @@
- {
-     char *dir = NULL;
+@@ -1272,10 +1272,10 @@ static const char *init_server_dir( dev_t dev, ino_t ino )
+     else
+         snprintf( tmp + p, sizeof(tmp) - p, "%lx", (unsigned long)ino );
  
 -#ifdef __ANDROID__  /* there's no /tmp dir on Android */
+-    asprintf( &dir, "%s/.wineserver/server-%s", config_dir, tmp );
 +#if defined(__ANDROID__) && ! defined(__TERMUX__)  /* there's no /tmp dir on Android */
-     asprintf( &dir, "%s/.wineserver/server-%llx-%llx", config_dir, (unsigned long long)dev, (unsigned long long)ino );
++    asprintf( &dir, "%s/.wineserver/server-%llx-%llx", config_dir, tmp );
  #else
--    asprintf( &dir, "/tmp/.wine-%u/server-%llx-%llx", getuid(), (unsigned long long)dev, (unsigned long long)ino );
-+    asprintf( &dir, "@TERMUX_PREFIX@/tmp/.wine-%u/server-%llx-%llx", getuid(), (unsigned long long)dev, (unsigned long long)ino );
+-    asprintf( &dir, "/tmp/.wine-%u/server-%s", getuid(), tmp );
++    asprintf( &dir, "@TERMUX_PREFIX@/tmp/.wine-%u/server-%s", getuid(), tmp );
  #endif
      return dir;
  }
-diff -uNr a/programs/winebrowser/main.c b/programs/winebrowser/main.c
+diff --git a/programs/winebrowser/main.c b/programs/winebrowser/main.c
+index 738930e..ad99e6f 100644
 --- a/programs/winebrowser/main.c
 +++ b/programs/winebrowser/main.c
-@@ -116,6 +116,7 @@
+@@ -132,6 +132,7 @@ static int open_http_url( const WCHAR *url )
  {
      static const WCHAR defaultbrowsers[] =
          L"xdg-open\0"
@@ -94,7 +102,7 @@ diff -uNr a/programs/winebrowser/main.c b/programs/winebrowser/main.c
          "/usr/bin/open\0"
          "firefox\0"
          "konqueror\0"
-@@ -141,7 +142,8 @@
+@@ -157,7 +158,8 @@ static int open_http_url( const WCHAR *url )
  static int open_mailto_url( const WCHAR *url )
  {
      static const WCHAR defaultmailers[] =
@@ -104,10 +112,11 @@ diff -uNr a/programs/winebrowser/main.c b/programs/winebrowser/main.c
          "xdg-email\0"
          "mozilla-thunderbird\0"
          "thunderbird\0"
-diff -uNr a/programs/winemenubuilder/winemenubuilder.c b/programs/winemenubuilder/winemenubuilder.c
+diff --git a/programs/winemenubuilder/winemenubuilder.c b/programs/winemenubuilder/winemenubuilder.c
+index 6d34fa6..a98acc9 100644
 --- a/programs/winemenubuilder/winemenubuilder.c
 +++ b/programs/winemenubuilder/winemenubuilder.c
-@@ -1708,7 +1708,7 @@
+@@ -1621,7 +1621,7 @@ static BOOL build_native_mime_types(struct list *mime_types)
      if (_wgetenv( L"XDG_DATA_DIRS" ))
          dirs = xwcsdup( _wgetenv( L"XDG_DATA_DIRS" ));
      else
@@ -116,21 +125,26 @@ diff -uNr a/programs/winemenubuilder/winemenubuilder.c b/programs/winemenubuilde
  
      ret = add_mimes(xdg_data_dir, mime_types);
      if (ret)
-diff -uNr a/server/request.c b/server/request.c
+diff --git a/server/request.c b/server/request.c
+index 343e1a9..e5fb59b 100644
 --- a/server/request.c
 +++ b/server/request.c
-@@ -647,12 +647,12 @@
+@@ -659,15 +659,15 @@ static char *create_server_dir( int force )
  
      /* create the base directory if needed */
  
 -#ifdef __ANDROID__  /* there's no /tmp dir on Android */
 +#if defined(__ANDROID__) && ! defined(__TERMUX__)  /* there's no /tmp dir on Android */
-     if (asprintf( &base_dir, "%s/.wineserver", config_dir ) == -1)
-         fatal_error( "out of memory\n" );
+     len += strlen( config_dir ) + sizeof("/.wineserver");
+     if (!(server_dir = malloc( len ))) fatal_error( "out of memory\n" );
+     strcpy( server_dir, config_dir );
+     strcat( server_dir, "/.wineserver" );
  #else
--    if (asprintf( &base_dir, "/tmp/.wine-%u", getuid() ) == -1)
-+    if (asprintf( &base_dir, "@TERMUX_PREFIX@/tmp/.wine-%u", getuid() ) == -1)
-         fatal_error( "out of memory\n" );
+-    len += sizeof("/tmp/.wine-") + 12;
++    len += sizeof("@TERMUX_PREFIX@/tmp/.wine-") + 12;
+     if (!(server_dir = malloc( len ))) fatal_error( "out of memory\n" );
+-    sprintf( server_dir, "/tmp/.wine-%u", getuid() );
++    sprintf( server_dir, "@TERMUX_PREFIX@/tmp/.wine-%u", getuid() );
  #endif
      create_dir( server_dir, &st2 );
  
