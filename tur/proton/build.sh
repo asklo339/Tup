@@ -18,7 +18,7 @@ TERMUX_PKG_EXTRA_HOSTBUILD_CONFIGURE_ARGS="
 --disable-tests
 "
 
-TERMUX_PKG_BLACKLISTED_ARCHES="arm, aarch64, arm64ec"
+TERMUX_PKG_BLACKLISTED_ARCHES="arm, i686, x86_64"
 
 TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
 ac_cv_func_shm_open=yes
@@ -70,9 +70,9 @@ enable_wineandroid_drv=no
 --with-xrandr
 --with-xrender
 --without-xshape
---without-xshm
+--with-xshm
 --without-xxf86vm
---enable-archs=i386,x86_64
+--enable-archs=i386,aarch64,arm64ec
 "
 # TODO: `--enable-archs=arm` doesn't build with option `--with-mingw=clang`, but
 # TODO: `arm64ec` doesn't build with option `--with-mingw` (arm64ec-w64-mingw32-clang)
