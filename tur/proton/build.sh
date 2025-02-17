@@ -6,8 +6,8 @@ TERMUX_PKG_MAINTAINER="@termux-user-repository"
 TERMUX_PKG_VERSION=9.0
 TERMUX_PKG_REVISION=2
 _REAL_VERSION="${TERMUX_PKG_VERSION/\~/-}"
-TERMUX_PKG_SRCURL=https://github.com/asklo339/Tup/releases/download/upstream/wine-proton-9.0-arm64ec.tar.xz
-TERMUX_PKG_SHA256=4c3708f06dfb6b4e4924325fd971aad4cf7dd3e68b9610b19e031018f9b45a33
+TERMUX_PKG_SRCURL=https://github.com/airidosas252/wine-test/releases/download/Proton-9.0-fix/wine-proton-9.0-arm64ec.tar.xz
+TERMUX_PKG_SHA256=4572dc3db2d4c9a55b18c6f620b4eb3a7d90773dc98fe1b5da98b52272a25341
 TERMUX_PKG_DEPENDS="fontconfig, libdrm, freetype, krb5, libandroid-spawn, libandroid-shmem, libc++, libgmp, libgnutls, libxcb, libxcomposite, libxcursor, libxfixes, libxrender, mesa, opengl, pulseaudio, sdl2, vulkan-loader, xorg-xrandr"
 TERMUX_PKG_ANTI_BUILD_DEPENDS="vulkan-loader"
 TERMUX_PKG_BUILD_DEPENDS="libandroid-spawn-static, vulkan-loader-generic, libandroid-shmem-static"
@@ -124,7 +124,7 @@ termux_step_pre_configure() {
 	CXXFLAGS+=" -Wno-implicit-function-declaration"
 
 	# Link android-spawn
-	LDFLAGS+=" -landroid-spawn -landroid-shmem"
+	LDFLAGS+=" -landroid-spawn -l:libandroid-shmem.a -llog"
 }
 
 termux_step_make() {
