@@ -4,7 +4,7 @@ TERMUX_PKG_LICENSE="LGPL-2.1"
 TERMUX_PKG_LICENSE_FILE="LICENSE, LICENSE.OLD, COPYING.LIB"
 TERMUX_PKG_MAINTAINER="@termux-user-repository"
 TERMUX_PKG_VERSION=9.0
-TERMUX_PKG_REVISION=2
+TERMUX_PKG_REVISION=3
 _REAL_VERSION="${TERMUX_PKG_VERSION/\~/-}"
 TERMUX_PKG_SRCURL=https://github.com/airidosas252/wine-test/releases/download/Proton-9.0-fix/wine-proton-9.0-arm64ec.tar.xz
 TERMUX_PKG_SHA256=4572dc3db2d4c9a55b18c6f620b4eb3a7d90773dc98fe1b5da98b52272a25341
@@ -21,8 +21,6 @@ TERMUX_PKG_EXTRA_HOSTBUILD_CONFIGURE_ARGS="
 TERMUX_PKG_BLACKLISTED_ARCHES="arm, i686, x86_64"
 
 TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
-ac_cv_func_shm_open=yes
-ac_cv_func_shm_unlink=yes
 enable_wineandroid_drv=no
 --prefix=$TERMUX_PREFIX/opt/proton-wine
 --exec-prefix=$TERMUX_PREFIX/opt/proton-wine
@@ -31,7 +29,6 @@ enable_wineandroid_drv=no
 --enable-nls
 --disable-tests
 --without-alsa
---disable-fsync
 --without-capi
 --without-coreaudio
 --without-cups
