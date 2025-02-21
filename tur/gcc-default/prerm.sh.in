@@ -1,0 +1,29 @@
+#!@TERMUX_PREFIX@/bin/sh
+
+set -e
+
+if [ "$(command -v pacman-conf || true)" = "" ]; then
+	TERMUX_ARCH="$(dpkg --print-architecture)"
+else
+	TERMUX_ARCH="$(pacman-conf Architecture)"
+fi
+TERMUX_PLATFORM="$TERMUX_ARCH-linux-android"
+test $TERMUX_ARCH = "arm" && TERMUX_PLATFORM="${TERMUX_PLATFORM}eabi"
+
+CLANG_INSTALLED="false"
+test -e @TERMUX_PREFIX@/bin/clang && CLANG_INSTALLED="true"
+
+rm -fv @TERMUX_PREFIX@/bin/$TERMUX_PLATFORM-gfortran
+rm -fv @TERMUX_PREFIX@/bin/f90
+rm -fv @TERMUX_PREFIX@/bin/f77
+rm -fv @TERMUX_PREFIX@/bin/gfortran
+
+if [ "$CLANG_INSTALLED" = "true" ]; then
+	for tool in cc c++ cpp gcc g++ $TERMUX_PLATFORM-gcc $TERMUX_PLATFORM-g++ $TERMUX_PLATFORM-cpp; do
+		mv -fv @TERMUX_PREFIX@/share/@TERMUX_PKG_NAME@/$tool @TERMUX_PREFIX@/bin/$tool
+	done
+else
+	for tool in cc c++ cpp gcc g++ $TERMUX_PLATFORM-gcc $TERMUX_PLATFORM-g++ $TERMUX_PLATFORM-cpp; do
+		rm -fv @TERMUX_PREFIX@/bin/$tool @TERMUX_PREFIX@/share/@TERMUX_PKG_NAME@/$tool
+	done
+fi

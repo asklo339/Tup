@@ -1,0 +1,12 @@
+--- a/setup.py
++++ b/setup.py
+@@ -824,7 +824,8 @@
+ 
+         # Lance Ellinghaus's syslog module
+         # syslog daemon interface
+-        self.add(Extension('syslog', ['syslogmodule.c']))
++        # Termux: Add 'log' android library since we use android logging:
++        self.add(Extension('syslog', ['syslogmodule.c'], libraries=['log']))
+ 
+         # Python interface to subinterpreter C-API.
+         self.add(Extension('_xxsubinterpreters', ['_xxsubinterpretersmodule.c']))
