@@ -1,4 +1,4 @@
-name: Build Package ahhhh
+name: Build Package ahh
 
 on:
   workflow_dispatch:
