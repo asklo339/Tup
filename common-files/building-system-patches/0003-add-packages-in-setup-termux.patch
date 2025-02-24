@@ -1,0 +1,24 @@
+Add some dependencies required by TUR-on-Device.
+--- a/scripts/setup-termux.sh
++++ b/scripts/setup-termux.sh
+@@ -45,12 +45,20 @@
+ PACKAGES+=" xmlto"                      # Needed by git's manpage generation
+ PACKAGES+=" zip"
+ 
++# Tier 3: requirements for community repos.
++PACKAGES+=" tur-repo x11-repo"
++PACKAGES+=" ndk-multilib-native-stubs"
++
+ # Definition of a package manager
+ export TERMUX_SCRIPTDIR=$(dirname "$(realpath "$0")")/../
+ . $(dirname "$(realpath "$0")")/properties.sh
+ source "$TERMUX_PREFIX/bin/termux-setup-package-manager" || true
+ 
+ if [ "$TERMUX_APP_PACKAGE_MANAGER" = "apt" ]; then
++	sed -i "s/packages.termux.dev/packages-cf.termux.dev/g" /data/data/com.termux/files/usr/etc/apt/sources.list
++	apt update
++	apt dist-upgrade -o Dpkg::Options::=--force-confnew -y
++	sed -i "s/packages.termux.dev/packages-cf.termux.dev/g" /data/data/com.termux/files/usr/etc/apt/sources.list
+ 	apt update
+ 	apt dist-upgrade -y
+ 	apt install -y $PACKAGES

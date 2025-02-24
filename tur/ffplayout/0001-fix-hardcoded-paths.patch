@@ -1,0 +1,20 @@
+--- a/engine/src/utils/mod.rs
++++ b/engine/src/utils/mod.rs
+@@ -183,7 +183,7 @@
+         }
+     }
+ 
+-    let sys_path = Path::new("/usr/share/ffplayout/db");
++    let sys_path = Path::new("@TERMUX_PREFIX@/share/ffplayout/db");
+     let mut db_path = "./ffplayout.db";
+ 
+     if sys_path.is_dir() && !sys_path.writable() {
+@@ -191,7 +191,7 @@
+     }
+ 
+     if sys_path.is_dir() && sys_path.writable() {
+-        db_path = "/usr/share/ffplayout/db/ffplayout.db";
++        db_path = "@TERMUX_PREFIX@/share/ffplayout/db/ffplayout.db";
+     } else if Path::new("./assets").is_dir() {
+         db_path = "./assets/ffplayout.db";
+     }
